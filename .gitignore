@@ -217,3 +217,4 @@ __marimo__/
 
 # ignore tickers file
 data/tickers.csv
+data/ohlcv/
