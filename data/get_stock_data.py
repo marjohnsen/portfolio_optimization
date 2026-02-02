@@ -163,29 +163,29 @@ def get_ohlcv_batch(
     interval: str = "1h",
     update: bool = True,
 ) -> OHLCVBatch:
+    from tqdm import tqdm
+
     items: dict[str, OHLCV] = {}
 
     total = len(tickers)
-    ok = 0
     failed = 0
 
-    for ticker in tickers:
-        try:
-            v = get_ohlcv(ticker, path=path, interval=interval, update=update)
-            items[ticker] = v
-            ok += 1
-        except Exception as e:
-            items[ticker] = OHLCV(
-                ticker=ticker,
-                interval=interval,
-                df=pd.DataFrame(),
-                msg=str(e) or type(e).__name__,
-                failed=True,
-            )
-            failed += 1
+    with tqdm(total=total, desc="Fetching", unit="ticker", leave=True) as pbar:
+        for ticker in tickers:
+            try:
+                items[ticker] = get_ohlcv(ticker, path=path, interval=interval, update=update)
+            except Exception as e:
+                items[ticker] = OHLCV(
+                    ticker=ticker,
+                    interval=interval,
+                    df=pd.DataFrame(),
+                    msg=str(e) or type(e).__name__,
+                    failed=True,
+                )
+                failed += 1
 
-        msg = f"Fetched {ok}/{total} (failed {failed})"
-        print("\r" + msg.ljust(40), end="", flush=True)
+            pbar.set_description_str(f"Fetching OHLCV [{ticker}])")
+            pbar.set_postfix_str(f"FAILED={failed}", refresh=True)
+            pbar.update(1)
 
-    print()
     return OHLCVBatch(items=items)
