@@ -74,7 +74,7 @@ class LLTModel(MeanModel):
         ticker = self.ohlcv.ticker
         close = self.ohlcv.df["Close"].reindex(self.idx).iloc[skip:]
         vol = self.ohlcv.df["Volume"].reindex(self.idx).iloc[skip:].fillna(0)
-        log_return = np.log(close).diff().iloc[skip:]
+        log_return = np.log(close).diff()
 
         innov = self.res.filter_results.standardized_forecasts_error
         innov = innov[0] if np.ndim(innov) == 2 else innov
@@ -102,12 +102,17 @@ class LLTModel(MeanModel):
 
         ax_trend.fill_between(hist.index, hist["trend_lo"], hist["trend_hi"], alpha=0.2)
         ax_trend.plot(hist.index, hist["trend"], label="trend")
-        ax_trend.axhline(0, linestyle=":", linewidth=1)
 
         ax_ret = ax_trend.twinx()
         ax_ret.plot(log_return.index, log_return, linewidth=1.0, alpha=0.3, label="returns")
-        ax_ret.axhline(0, linestyle=":", linewidth=1)
-        ax_ret.set_title("Trend")
+
+        for ax in (ax_trend, ax_ret):
+            lo, hi = ax.get_ylim()
+            m = max(abs(lo), abs(hi))
+            ax.set_ylim(-m, m)
+            ax.axhline(0, linestyle=":", linewidth=1, color="k", alpha=0.7)
+
+        ax_trend.set_title("Trend")
 
         ax_vol.bar(vol.index, vol.to_numpy())
         ax_vol.set_title("Volume")

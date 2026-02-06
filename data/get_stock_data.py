@@ -23,6 +23,14 @@ class OHLCV:
     df: pd.DataFrame
     msg: str = "OK"
     failed: bool = False
+    fill_gaps: bool = False
+
+    def __post_init__(self) -> None:
+        if self.fill_gaps:
+            if not isinstance(self.df.index, pd.DatetimeIndex):
+                self.df.index = pd.to_datetime(self.df.index, errors="coerce")
+            self.df = self.df.sort_index()
+            self.df = self.df.asfreq(self.interval)
 
     def __len__(self) -> int:
         return int(len(self.df))
@@ -99,6 +107,9 @@ class OHLCVBatch:
         drop_set = set(tickers)
         return OHLCVBatch(items={t: v for t, v in self.items.items() if t not in drop_set})
 
+    def drop_failed(self) -> "OHLCVBatch":
+        return self.drop(list(self.failed().keys()))
+
     def drop_illiquid(self, min_median_nok_volume: float = 1_000_000) -> "OHLCVBatch":
         df = self.to_pandas()
         if df.empty:
@@ -117,6 +128,7 @@ def get_ohlcv(
     path: str | Path = "data/ohlcv",
     interval: str = "1h",
     update: bool = True,
+    fill_gaps: bool = False,
 ) -> OHLCV:
     path = Path(path)
     path.mkdir(parents=True, exist_ok=True)
@@ -126,21 +138,23 @@ def get_ohlcv(
     # No cache
     if not csv_path.exists():
         if not update:
-            return OHLCV(ticker=ticker, interval=interval, df=pd.DataFrame(), msg="No cache (update=False)")
+            return OHLCV(
+                ticker=ticker, interval=interval, df=pd.DataFrame(), msg="No cache (update=False)", failed=True
+            )
         df = _ensure_utc_naive(t.history(period="729d", interval=interval, raise_errors=True).sort_index())
         if not df.empty:
             df.to_csv(csv_path)
-        return OHLCV(ticker=ticker, interval=interval, df=df, msg="OK")
+        return OHLCV(ticker=ticker, interval=interval, df=df, msg="OK", fill_gaps=fill_gaps)
 
     # Cache exists
     existing = _ensure_utc_naive(pd.read_csv(csv_path, index_col=0, parse_dates=True).sort_index())
     if not update:
-        return OHLCV(ticker=ticker, interval=interval, df=existing, msg="OK")
+        return OHLCV(ticker=ticker, interval=interval, df=existing, msg="OK", fill_gaps=fill_gaps)
 
     # Skip update if latest cached bar is today (UTC)
     last = existing.index.max()
     if pd.Timestamp(last).normalize() == pd.Timestamp.utcnow().normalize():
-        return OHLCV(ticker=ticker, interval=interval, df=existing, msg="Already up to date")
+        return OHLCV(ticker=ticker, interval=interval, df=existing, msg="Already up to date", fill_gaps=fill_gaps)
 
     na = existing["Close"].isna()
     start = existing.index[na].min() if bool(na.any()) else existing.index.max()
@@ -148,12 +162,12 @@ def get_ohlcv(
     new = _ensure_utc_naive(t.history(start=start, interval=interval, raise_errors=True).sort_index())
 
     if new.empty:
-        return OHLCV(ticker=ticker, interval=interval, df=existing, msg="No new data")
+        return OHLCV(ticker=ticker, interval=interval, df=existing, msg="No new data", fill_gaps=fill_gaps)
 
     merged = pd.concat([existing, new]).sort_index()
     merged = merged[~merged.index.duplicated(keep="last")]
     merged.to_csv(csv_path)
-    return OHLCV(ticker=ticker, interval=interval, df=cast(pd.DataFrame, merged), msg="OK")
+    return OHLCV(ticker=ticker, interval=interval, df=cast(pd.DataFrame, merged), msg="OK", fill_gaps=fill_gaps)
 
 
 def get_ohlcv_batch(
@@ -162,6 +176,7 @@ def get_ohlcv_batch(
     path: str | Path = "data/ohlcv",
     interval: str = "1h",
     update: bool = True,
+    fill_gaps: bool = False,
 ) -> OHLCVBatch:
     from tqdm import tqdm
 
@@ -181,6 +196,7 @@ def get_ohlcv_batch(
                     df=pd.DataFrame(),
                     msg=str(e) or type(e).__name__,
                     failed=True,
+                    fill_gaps=fill_gaps,
                 )
                 failed += 1
 

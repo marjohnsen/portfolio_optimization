@@ -69,7 +69,7 @@ class LLModel(MeanModel):
         close = self.ohlcv.df["Close"].reindex(self.idx).iloc[skip:]
         vol = self.ohlcv.df["Volume"].reindex(idx).iloc[skip:].fillna(0)
 
-        log_return = np.log(close).diff().iloc[skip:]
+        log_return = np.log(close).diff()
 
         innov = self.res.filter_results.standardized_forecasts_error
         innov = innov[0] if np.ndim(innov) == 2 else innov
@@ -90,12 +90,17 @@ class LLModel(MeanModel):
 
         ax_lvl.fill_between(hist.index, hist["level_lo"], hist["level_hi"], alpha=0.2)
         ax_lvl.plot(hist.index, hist["level"], label="level")
-        ax_lvl.axhline(0, linestyle=":", linewidth=1)
 
         ax_ret = ax_lvl.twinx()
         ax_ret.plot(log_return.index, log_return, linewidth=1.0, alpha=0.3, label="returns")
-        ax_ret.axhline(0, linestyle=":", linewidth=1)
-        ax_ret.set_title("Level")
+
+        for ax in (ax_lvl, ax_ret):
+            lo, hi = ax.get_ylim()
+            m = max(abs(lo), abs(hi))
+            ax.set_ylim(-m, m)
+            ax.axhline(0, linestyle=":", linewidth=1, color="k", alpha=0.7)
+
+        ax_lvl.set_title("Level")
 
         ax_vol.bar(vol.index, vol.to_numpy())
         ax_vol.set_title("Volume")
